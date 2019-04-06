@@ -101,7 +101,8 @@ typedef struct redisReply {
     size_t elements; /* number of elements, for REDIS_REPLY_ARRAY */
     struct redisReply **element; /* elements vector for REDIS_REPLY_ARRAY */
 } redisReply;
-
+//主要处理array对象
+//用于给redisReplyObjectFunctions中的函数提供输入参数
 typedef struct redisReadTask {
     int type;
     int elements; /* number of elements in multibulk container */

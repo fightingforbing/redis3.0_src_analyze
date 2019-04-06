@@ -245,7 +245,7 @@ static void __redisReaderSetErrorProtocolByte(redisReader *r, char byte) {
 static void __redisReaderSetErrorOOM(redisReader *r) {
     __redisReaderSetError(r,REDIS_ERR_OOM,"Out of memory");
 }
-
+//获取响应信息，并将pos偏移读取的字节数
 static char *readBytes(redisReader *r, unsigned int bytes) {
     char *p;
     if (r->len-r->pos >= bytes) {
@@ -257,6 +257,7 @@ static char *readBytes(redisReader *r, unsigned int bytes) {
 }
 
 /* Find pointer to \r\n. */
+//获取返回信息中的字符\r处的指针地址
 static char *seekNewline(char *s, size_t len) {
     int pos = 0;
     int _len = len-1;
@@ -311,15 +312,20 @@ static long long readLongLong(char *s) {
 
     return mult*v;
 }
-
+//获取以\r\n结尾的一行信息
 static char *readLine(redisReader *r, int *_len) {
     char *p, *s;
     int len;
-
+    //去掉上一步readBytes读取到的信息，得到剩下的返回信息
     p = r->buf+r->pos;
     s = seekNewline(p,(r->len-r->pos));
     if (s != NULL) {
+	//获取返回信息 除去前面已读取内容，最后的\r\n外剩下的长度
+	//eg SET命令的返回是+OK\r\n
+	//则上一步seekNewline返回的s 是 \r\n位置处的地址
+	//尾指针和首指针相减,得到的是两个指针指向的元素的距离
         len = s-(r->buf+r->pos);
+	//已读取内容做偏移
         r->pos += len+2; /* skip \r\n */
         if (_len) *_len = len;
         return p;
@@ -511,20 +517,27 @@ static int processItem(redisReader *r) {
     /* check if we need to read type */
     if (cur->type < 0) {
         if ((p = readBytes(r,1)) != NULL) {
+	    //eg set命令的返回是 +OK\r\n
             switch (p[0]) {
             case '-':
+		//返回错误
                 cur->type = REDIS_REPLY_ERROR;
                 break;
             case '+':
+		//返回执行结果为状态的命令
                 cur->type = REDIS_REPLY_STATUS;
                 break;
             case ':':
+		//返回整型标识
                 cur->type = REDIS_REPLY_INTEGER;
                 break;
             case '$':
+		//返回字符串标识
                 cur->type = REDIS_REPLY_STRING;
                 break;
             case '*':
+		//返回数据集标识
+		//可以通过reply->elements获得
                 cur->type = REDIS_REPLY_ARRAY;
                 break;
             default:
@@ -592,7 +605,8 @@ int redisReaderFeed(redisReader *r, const char *buf, size_t len) {
     /* Copy the provided buffer. */
     if (buf != NULL && len >= 1) {
         /* Destroy internal buffer when it is empty and is quite large. */
-        if (r->len == 0 && r->maxbuf != 0 && sdsavail(r->buf) > r->maxbuf) {
+    	//如果buf有一块相当大但是未使用的空间，则释放掉，重新创建空间
+	    if (r->len == 0 && r->maxbuf != 0 && sdsavail(r->buf) > r->maxbuf) {
             sdsfree(r->buf);
             r->buf = sdsempty();
             r->pos = 0;
@@ -1102,16 +1116,18 @@ int redisBufferRead(redisContext *c) {
 
     nread = read(c->fd,buf,sizeof(buf));
     if (nread == -1) {
+	//非阻塞模式，稍后在尝试
         if (errno == EAGAIN && !(c->flags & REDIS_BLOCK)) {
             /* Try again later */
         } else {
             __redisSetError(c,REDIS_ERR_IO,NULL);
             return REDIS_ERR;
         }
-    } else if (nread == 0) {
+    } else if (nread == 0) { //未读取到数据
         __redisSetError(c,REDIS_ERR_EOF,"Server closed the connection");
         return REDIS_ERR;
     } else {
+	//将读取都的数据存入c->reader
         if (redisReaderFeed(c->reader,buf,nread) != REDIS_OK) {
             __redisSetError(c,c->reader->err,c->reader->errstr);
             return REDIS_ERR;
@@ -1129,6 +1145,12 @@ int redisBufferRead(redisContext *c) {
  * Returns REDIS_ERR if an error occured trying to write and sets
  * c->errstr to hold the appropriate error string.
  */
+/*
+ * 函数作用: 写命令到套接字
+ * 当buffer为空，或者buffer内容成功写入到套接字 函数返回值为REDIS_OK
+ * 如果buffer内容有成功写入到套接字，并且全部写入完成 则设置done为1
+ * 用来结束函数调用方的写循环
+*/
 int redisBufferWrite(redisContext *c, int *done) {
     int nwritten;
 
@@ -1139,21 +1161,24 @@ int redisBufferWrite(redisContext *c, int *done) {
     if (sdslen(c->obuf) > 0) {
         nwritten = write(c->fd,c->obuf,sdslen(c->obuf));
         if (nwritten == -1) {
+	    //如果是非阻塞的模式写数据到套接字，会稍后再次尝试
             if (errno == EAGAIN && !(c->flags & REDIS_BLOCK)) {
                 /* Try again later */
             } else {
+		//设置IO错误
                 __redisSetError(c,REDIS_ERR_IO,NULL);
                 return REDIS_ERR;
             }
-        } else if (nwritten > 0) {
-            if (nwritten == (signed)sdslen(c->obuf)) {
+        } else if (nwritten > 0) { //有成功写入
+            if (nwritten == (signed)sdslen(c->obuf)) { //全部写入
                 sdsfree(c->obuf);
                 c->obuf = sdsempty();
             } else {
-                sdsrange(c->obuf,nwritten,-1);
+                sdsrange(c->obuf,nwritten,-1); //部分写入，将写入的部分清除，下次循环继续写入剩余的部分
             }
         }
     }
+    //全部写入完成，即c->obuf为空时，设置done为1
     if (done != NULL) *done = (sdslen(c->obuf) == 0);
     return REDIS_OK;
 }
@@ -1292,7 +1317,7 @@ void *redisvCommand(redisContext *c, const char *format, va_list ap) {
     //命令解析， 并将解析内容存入c->obuf
     if (redisvAppendCommand(c,format,ap) != REDIS_OK)
         return NULL;
-    //发送命令到服务端
+    //发送命令到服务端并获取返回信息
     return __redisBlockForReply(c);
 }
 
