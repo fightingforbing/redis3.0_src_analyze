@@ -399,12 +399,22 @@ static int processBulkItem(redisReader *r) {
     long len;
     unsigned long bytelen;
     int success = 0;
-
+    //假设buf内容为'$11\r\nhello world\r\n'
+    //在前面readBytes的时候pos偏移了一位
+    //所以此时r->pos = 1
+    //p的值为'11\r\nhello world\r\n'
     p = r->buf+r->pos;
+    //seekNewline返回首次碰到\r\n后的字符串
+    //所以此时的s为\r\nhello world\r\n
     s = seekNewline(p,r->len-r->pos);
     if (s != NULL) {
         p = r->buf+r->pos;
+        //类似相当于'\r\nhello world\r\n'字符串的起始地址 - '11\r\nhello world\r\n'字符串的起始地址
+        //得到两个字节的地址偏差 即 '11'字符串的长度
+        //加上 \r\n 所以bytelen = 4
         bytelen = s-(r->buf+r->pos)+2; /* include \r\n */
+	//字符串11 转化成int类型
+	//即 len=11
         len = readLongLong(p);
 
         if (len < 0) {
@@ -416,6 +426,7 @@ static int processBulkItem(redisReader *r) {
             success = 1;
         } else {
             /* Only continue when the buffer contains the entire bulk item. */
+            //上面+2的是11\r\n的两个字节，这里+2的是最后hello world\r\n的两个字节 这样 r->pos+bytelen如果 大于r->len说明返回的内容协议有误            
             bytelen += len+2; /* include \r\n */
             if (r->pos+bytelen <= r->len) {
                 if (r->fn && r->fn->createString)
@@ -517,7 +528,6 @@ static int processItem(redisReader *r) {
     /* check if we need to read type */
     if (cur->type < 0) {
         if ((p = readBytes(r,1)) != NULL) {
-	    //eg set命令的返回是 +OK\r\n
             switch (p[0]) {
             case '-':
 		//返回错误
@@ -525,6 +535,7 @@ static int processItem(redisReader *r) {
                 break;
             case '+':
 		//返回执行结果为状态的命令
+		//例如 SET命令的返回内容为+OK\r\n
                 cur->type = REDIS_REPLY_STATUS;
                 break;
             case ':':
@@ -533,6 +544,7 @@ static int processItem(redisReader *r) {
                 break;
             case '$':
 		//返回字符串标识
+		//例如 GET命令的返回内容为$11\r\nhello world\r\n
                 cur->type = REDIS_REPLY_STRING;
                 break;
             case '*':
