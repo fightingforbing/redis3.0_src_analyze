@@ -706,7 +706,7 @@ static int parseOptions(int argc, char **argv) {
             usage();
         } else if (!strcmp(argv[i],"--help")) {//输出命令行参数提示
             usage();
-        } else if (!strcmp(argv[i],"-x")) {
+        } else if (!strcmp(argv[i],"-x")) {//从标准输入读取参数 类似 redis-cli -x < xxx.txt
             config.stdinarg = 1;
         } else if (!strcmp(argv[i],"-p") && !lastarg) {//参数是-p,且不是最后一个参数 设置端口
             config.hostport = atoi(argv[++i]);
@@ -721,9 +721,9 @@ static int parseOptions(int argc, char **argv) {
             config.dbnum = atoi(argv[++i]);
         } else if (!strcmp(argv[i],"-a") && !lastarg) {//设置认证密码
             config.auth = argv[++i];
-        } else if (!strcmp(argv[i],"--raw")) {//raw格式输出，用于没有tty
+        } else if (!strcmp(argv[i],"--raw")) {//raw格式输出(返回信息原样输出)
             config.output = OUTPUT_RAW;
-        } else if (!strcmp(argv[i],"--csv")) {//csv格式输出
+        } else if (!strcmp(argv[i],"--csv")) {//csv格式(对字符串中的部分转义字符会有展示，其他非可打印字符转化成16进制码值)
             config.output = OUTPUT_CSV;
         } else if (!strcmp(argv[i],"--latency")) {
             config.latency_mode = 1;
@@ -750,7 +750,7 @@ static int parseOptions(int argc, char **argv) {
             config.pipe_timeout = atoi(argv[++i]);
         } else if (!strcmp(argv[i],"--bigkeys")) {
             config.bigkeys = 1;
-        } else if (!strcmp(argv[i],"--eval") && !lastarg) {
+        } else if (!strcmp(argv[i],"--eval") && !lastarg) { //执行lua脚本
             config.eval = argv[++i];
         } else if (!strcmp(argv[i],"-c")) {
             config.cluster_mode = 1;
@@ -776,7 +776,7 @@ static int parseOptions(int argc, char **argv) {
     }
     return i;
 }
-
+//从标准输入中读取信息
 static sds readArgFromStdin(void) {
     char buf[1024];
     sds arg = sdsempty();
@@ -851,6 +851,7 @@ static void usage() {
 }
 
 /* Turn the plain C strings into Sds strings */
+//C语言类型的字符串改成sds结构类型
 static char **convertToSds(int count, char** args) {
   int j;
   char **sds = zmalloc(sizeof(char*)*count);
