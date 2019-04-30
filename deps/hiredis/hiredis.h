@@ -80,6 +80,7 @@
 #define REDIS_MONITORING 0x40
 
 #define REDIS_REPLY_STRING 1
+//多个批量回复 第一个字节是* eg:*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n
 #define REDIS_REPLY_ARRAY 2
 #define REDIS_REPLY_INTEGER 3
 #define REDIS_REPLY_NIL 4
